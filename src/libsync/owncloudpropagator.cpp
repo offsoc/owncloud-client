@@ -570,15 +570,17 @@ Result<QString, bool> OwncloudPropagator::localFileNameClash(const QString &relF
         if (!fileInfo.exists()) {
             return false;
         } else {
-            // Check if the existing file is an *exact* name match with the remote file.
+            // Check if the existing file is an *exact* name match with the remote file. Do this by
+            // checking each file name in the directory of `relFile`.
+            QString fileName = fileInfo.fileName();
             bool hasFileInExactNormalizationAndCaseForm = false;
-            auto handle = csync_vio_local_opendir(_localDir);
+            auto handle = csync_vio_local_opendir(fileInfo.path());
             while (true) {
                 std::unique_ptr<csync_file_stat_t> dirent = csync_vio_local_readdir(handle, nullptr);
                 if (!dirent)
                     break;
 
-                if (relFile == dirent->path) {
+                if (fileName == dirent->path) {
                     // Exact match: no case differences, and no normalization differences, so no clash.
                     hasFileInExactNormalizationAndCaseForm = true;
                     break;
