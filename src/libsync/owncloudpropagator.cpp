@@ -28,6 +28,7 @@
 #include "propagateuploadfile.h"
 #include "propagateuploadtus.h"
 #include "propagatorjobs.h"
+#include "vio/csync_vio_local.h"
 
 #ifdef Q_OS_WIN
 #include "common/utility_win.h"
@@ -569,11 +570,25 @@ Result<QString, bool> OwncloudPropagator::localFileNameClash(const QString &relF
         if (!fileInfo.exists()) {
             return false;
         } else {
-            // Need to normalize to composited form because of QTBUG-39622/QTBUG-55896
-            const QString cName = fileInfo.canonicalFilePath().normalized(QString::NormalizationForm_C);
-            if (fileInfo.filePath() != cName && !cName.endsWith(relFile, Qt::CaseSensitive)) {
-                qCWarning(lcPropagator) << "Detected case clash between" << fileInfo.filePath() << "and" << cName;
-                return cName;
+            // Check if the existing file is an *exact* name match with the remote file.
+            bool hasFileInExactNormalizationAndCaseForm = false;
+            auto handle = csync_vio_local_opendir(_localDir);
+            while (true) {
+                std::unique_ptr<csync_file_stat_t> dirent = csync_vio_local_readdir(handle, nullptr);
+                if (!dirent)
+                    break;
+
+                if (relFile == dirent->path) {
+                    // Exact match: no case differences, and no normalization differences, so no clash.
+                    hasFileInExactNormalizationAndCaseForm = true;
+                    break;
+                }
+            }
+            csync_vio_local_closedir(handle);
+
+            if (!hasFileInExactNormalizationAndCaseForm) {
+                qCWarning(lcPropagator) << "Detected clash for" << fileInfo.filePath();
+                return fileInfo.filePath();
             }
         }
 #elif defined(Q_OS_WIN)
